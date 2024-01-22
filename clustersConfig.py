@@ -214,18 +214,18 @@ class ClustersConfig:
         def worker_number(a: int) -> str:
             self._ensure_clusters_loaded()
             assert self._cluster_info is not None
-            name = self._cluster_info.workers[a][0]
+            name = self._cluster_info.workers[a]
             return re.sub("[^0-9]", "", name)
 
         def worker_name(a: int) -> str:
             self._ensure_clusters_loaded()
             assert self._cluster_info is not None
-            return self._cluster_info.workers[a][0]
+            return self._cluster_info.workers[a]
         
         def bmc_ip(a: int) -> str:
             self._ensure_clusters_loaded()
             assert self._cluster_info is not None
-            return self._cluster_info.workers[a][1]
+            return self._cluster_info.bmcs[a]
         
         def api_network() -> str:
             self._ensure_clusters_loaded()
