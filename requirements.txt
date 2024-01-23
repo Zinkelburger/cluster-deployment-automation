@@ -1,5 +1,5 @@
 GitPython
-aicli
+git+https://github.com/karmab/aicli.git@b441a4cba70aca2a0833a4c72cb4f7af2f11b8fb#egg=aicli
 PyYAML
 requests
 setuptools-rust
