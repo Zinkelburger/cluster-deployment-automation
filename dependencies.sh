@@ -28,3 +28,5 @@ if ! command -v -- oc; then
 fi
 
 cat requirements.txt  | xargs -n1 $PYTHON_CMD -m pip install
+
+sudo activate-global-python-argcomplete

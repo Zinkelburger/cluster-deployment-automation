@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 from assistedInstaller import AssistedClientAutomation
 from assistedInstallerService import AssistedInstallerService
 from clustersConfig import ClustersConfig
@@ -72,7 +73,6 @@ def main() -> None:
         main_deploy(args)
     elif args.subcommand == "snapshot":
         main_snapshot(args)
-
 
 if __name__ == "__main__":
     main()
