@@ -53,7 +53,12 @@ def load_all_cluster_info() -> Dict[str, ClusterInfo]:
             cluster.network_api_port = e[3]
         elif e[7] == "no":
             cluster.workers.append(e[0])
-            cluster.bmcs.append(e[1])
+            if "https://" in e[1]:
+                cluster.bmcs.append(e[1][8:])
+            else:
+                cluster.bmcs.append(e[1])
+
+            
     if cluster is not None:
         ret.append(cluster)
     return {x.provision_host: x for x in ret}
