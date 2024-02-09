@@ -28,6 +28,7 @@ def ExtraConfigCX(cc: ClustersConfig, _: ExtraConfigArgs, futures: Dict[str, Fut
                 logger.info(result)
                 sys.exit(-1)
 
+        h.ssh_connect("core")
         check(h.cx_firmware_upgrade())
         h.cold_boot()
 
