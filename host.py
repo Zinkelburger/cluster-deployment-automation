@@ -256,7 +256,7 @@ class Host:
 
     def ssh_connect_looped(self, logins: List[Login]) -> None:
         if len(logins) == 0:
-            raise Exception("No usuable logins found")
+            raise Exception("No usable logins found")
         while True:
             for e in logins:
                 try:
