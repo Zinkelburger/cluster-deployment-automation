@@ -107,14 +107,6 @@ class BMC:
         return BMC(url, user, password)
 
     @staticmethod
-    def from_hostname(hostname: str, user: str = "root", password: str = "calvin") -> 'BMC':
-        ip = socket.gethostbyname(hostname)
-        octets = ip.split(".")
-        octets[-1] = str(int(octets[-1]) + 1)
-        res_bmc_ip = ".".join(octets)
-        return BMC.from_ip(res_bmc_ip, user, password)
-
-    @staticmethod
     def from_ip(ip: str, user: str = "root", password: str = "calvin") -> 'BMC':
         url = f"https://{ip}/redfish/v1/Systems/System.Embedded.1"
         return BMC(url, user, password)
@@ -200,13 +192,6 @@ class BMC:
         time.sleep(10)
         self.start()
         time.sleep(5)
-
-
-def bmc_from_host_name_or_ip(hostname: str, ip: Optional[str], user: str = "root", password: str = "calvin") -> BMC:
-    if ip is None:
-        return BMC.from_hostname(hostname, user, password)
-    else:
-        return BMC.from_ip(ip, user, password)
 
 
 class Host:
@@ -313,9 +298,12 @@ class Host:
 
         logger.log(log_level, f"running command {cmd} on {self._hostname}")
         if self.is_localhost():
-            return self._run_local(cmd, env)
+            ret_val = self._run_local(cmd, env)
         else:
-            return self._run_remote(cmd, log_level)
+            ret_val = self._run_remote(cmd, log_level)
+
+        logger.log(log_level, ret_val)
+        return ret_val
 
     def _run_local(self, cmd: str, env: Dict[str, str]) -> Result:
         args = shlex.split(cmd)
@@ -488,7 +476,7 @@ class HostWithCX(Host):
 
     def run_in_container(self, cmd: str, interactive: bool = False) -> Result:
         name = "cx"
-        setup = f"sudo podman run --pull always --replace --pid host --network host --user 0 --name {name} -dit --privileged -v /dev:/dev quay.io/anbernal/cx-test"
+        setup = f"sudo podman run --pull always --replace --pid host --network host --user 0 --name {name} -dit --privileged -v /dev:/dev quay.io/bnemeth/bf"
         r = self.run(setup, logging.DEBUG)
         if r.returncode != 0:
             return r

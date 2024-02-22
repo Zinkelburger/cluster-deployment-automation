@@ -25,11 +25,12 @@ from nfs import NFS
 import coreosBuilder
 from typing import Tuple
 import common
+import os
 from python_hosts import Hosts, HostsEntry
 from logger import logger
-from dataclasses import dataclass
+import microshift
 from extraConfigRunner import ExtraConfigRunner
-import argparse
+from host import BMC
 
 
 def setup_dhcp_entry(h: host.Host, cfg: NodeConfig) -> None:
@@ -69,6 +70,16 @@ def setup_dhcp_entry(h: host.Host, cfg: NodeConfig) -> None:
     h.run_or_die(cmd)
 
 
+def match_to_proper_version_format(version_cluster_config: str) -> str:
+    regex_pattern = r'^\d+\.\d+'
+    match = re.match(regex_pattern, version_cluster_config)
+    logger.info(f"getting version to match with format XX.X using regex {regex_pattern}")
+    if not match:
+        logger.error(f"Invalid match {match}")
+        sys.exit(-1)
+    return match.group(0)
+
+
 def setup_vm(h: host.Host, cfg: NodeConfig, iso_or_image_path: str) -> host.Result:
     name = cfg.name
     mac = cfg.mac
@@ -81,7 +92,7 @@ def setup_vm(h: host.Host, cfg: NodeConfig, iso_or_image_path: str) -> host.Resu
             options += "off"
 
         os.makedirs(os.path.dirname(cfg.image_path), exist_ok=True)
-        logger.info(f"creating image for VM {name}")
+        logger.info(f"creating {disk_size_gb}GB storage for VM {name} at {cfg.image_path}")
         h.run_or_die(f'qemu-img create -f qcow2 {options} {cfg.image_path} {disk_size_gb}G')
 
         cdrom_line = f"--cdrom {iso_or_image_path}"
@@ -124,7 +135,7 @@ def setup_all_vms(h: host.Host, vms: List[NodeConfig], iso_path: str) -> List[Fu
         return []
 
     hostname = h.hostname()
-    logger.debug(f"Setting up vms on {hostname}")
+    logger.debug(f"Setting up {len(vms)} vms on {hostname}")
 
     executor = ThreadPoolExecutor(max_workers=len(vms))
     futures = []
@@ -468,21 +479,30 @@ class ClusterDeployer:
             else:
                 logger.info("Skipping pre configuration.")
 
-            lh = host.LocalHost()
-            self.ensure_linked_to_bridge(lh)
+            if self._cc.kind != "microshift":
+                lh = host.LocalHost()
+                self.ensure_linked_to_bridge(lh)
 
-            if "masters" in self.steps:
-                self.teardown()
-                self.create_cluster()
-                self.create_masters()
-            else:
-                logger.info("Skipping master creation.")
-
-            if "workers" in self.steps:
-                if len(self._cc.workers) != 0:
-                    self.create_workers()
+                if "masters" in self.steps:
+                    self.teardown()
+                    self.create_cluster()
+                    self.create_masters()
                 else:
-                    logger.info("Skipping worker creation.")
+                    logger.info("Skipping master creation.")
+
+                if "workers" in self.steps:
+                    if len(self._cc.workers) != 0:
+                        self.create_workers()
+                    else:
+                        logger.info("Skipping worker creation.")
+        if self._cc.kind == "microshift":
+            version = match_to_proper_version_format(self._cc.version)
+
+            if len(self._cc.masters) == 1:
+                microshift.deploy(self._cc.fullConfig["name"], self._cc.masters[0], self._cc.external_port, version)
+            else:
+                logger.error("Masters must be of length one for deploying microshift")
+                sys.exit(-1)
 
         if "post" in self.steps:
             self._postconfig()
@@ -509,12 +529,13 @@ class ClusterDeployer:
                 sys.exit(-1)
         else:
             logger.info("Don't need external network so will not set it up")
-        host_config = self.local_host_config(lh.hostname())
-        if self.need_api_network() and not self._validate_api_port(lh):
-            logger.info(f"Can't find a valid network API port, config is {host_config.network_api_port}")
-            sys.exit(-1)
-        else:
-            logger.info(f"Using {host_config.network_api_port} as network API port")
+        if self._cc.kind != "microshift":
+            host_config = self.local_host_config(lh.hostname())
+            if self.need_api_network() and not self._validate_api_port(lh):
+                logger.info(f"Can't find a valid network API port, config is {host_config.network_api_port}")
+                sys.exit(-1)
+            else:
+                logger.info(f"Using {host_config.network_api_port} as network API port")
 
     def client(self) -> K8sClient:
         if self._client is None:
@@ -885,7 +906,7 @@ class ClusterDeployer:
         lh = host.LocalHost()
         nfs = NFS(lh, self._cc.external_port)
 
-        bmc = host.bmc_from_host_name_or_ip(worker.node, worker.bmc_ip, worker.bmc_user, worker.bmc_password)
+        bmc = BMC.from_ip(worker.bmc_ip, worker.bmc_user, worker.bmc_password)
         h = host.HostWithBF2(host_name, bmc)
 
         iso = nfs.host_file(os.path.join(os.getcwd(), iso))
@@ -912,7 +933,7 @@ class ClusterDeployer:
 
         self._ai.ensure_infraenv_created(infra_env_name, cfg)
 
-        self._download_iso(infra_env_name, self._iso_path)
+        self._ai.download_iso_with_retry(infra_env_name, self._iso_path)
 
         ssh_priv_key_path = self._get_discovery_ign_ssh_priv_key(infra_env_name)
 
@@ -938,16 +959,6 @@ class ClusterDeployer:
         self._wait_known_state(e.name for e in self._cc.workers)
         self._ai.start_infraenv(infra_env_name)
         self.wait_for_workers()
-
-    def _download_iso(self, infra_env_name: str, iso_path: str) -> None:
-        logger.info(f"Download iso from {infra_env_name} to {iso_path}, will retry until success")
-        while True:
-            try:
-                self._ai.download_iso(infra_env_name, iso_path)
-                logger.info(f"iso for {infra_env_name} downloaded to {iso_path}")
-                break
-            except Exception:
-                time.sleep(5)
 
     def _get_discovery_ign_ssh_priv_key(self, infra_env_name: str) -> str:
         self._ai.download_discovery_ignition(infra_env_name, "/tmp")
@@ -990,7 +1001,7 @@ class ClusterDeployer:
 
         host_name = worker.node
         logger.info(f"Preparing BF on host {host_name}")
-        bmc = host.bmc_from_host_name_or_ip(worker.node, worker.bmc_ip, worker.bmc_user, worker.bmc_password)
+        bmc = BMC.from_ip(worker.bmc_ip, worker.bmc_user, worker.bmc_password)
         h = host.HostWithBF2(host_name, bmc)
         skip_boot = False
         if h.ping():

@@ -42,7 +42,7 @@ class NodeConfig:
     preallocated: str
     os_variant: str
     ip: Optional[str] = None
-    bmc_ip: Optional[str] = None
+    bmc_ip: str = None
     bmc_user: str = "root"
     bmc_password: str = "calvin"
 
@@ -69,6 +69,9 @@ class NodeConfig:
             kwargs["cpu"] = "8"
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+        if self.bmc_ip is None:
+            logger.error("BMC IP not set")
 
     def is_preallocated(self) -> bool:
         return self.preallocated == "true"
@@ -104,6 +107,7 @@ class ClustersConfig:
     api_vip: Dict[str, str]
     ingress_vip: Dict[str, str]
     external_port: str = "auto"
+    kind: str = "openshift"
     version: str = "4.14.0-nightly"
     network_api_port: str = "auto"
     masters: List[NodeConfig] = []
@@ -149,6 +153,8 @@ class ClustersConfig:
             self.external_port = cc["external_port"]
         if "version" in cc:
             self.version = cc["version"]
+        if "kind" in cc:
+            self.kind = cc["kind"]
         if "network_api_port" in cc:
             self.network_api_port = cc["network_api_port"]
         self.name = cc["name"]
