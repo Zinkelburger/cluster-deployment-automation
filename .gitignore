@@ -2,3 +2,7 @@ kickstart.ks
 pull_secret.json
 *.tar
 *.iso
+.mypy_cache
+__pycache__
+ocp-venv
+credentials.json
