@@ -70,9 +70,6 @@ class NodeConfig:
         for k, v in kwargs.items():
             setattr(self, k, v)
 
-        if self.bmc_ip is None:
-            logger.error("BMC IP not set")
-
     def is_preallocated(self) -> bool:
         return self.preallocated == "true"
 
